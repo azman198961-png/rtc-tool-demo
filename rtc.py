@@ -3,66 +3,75 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 
-# Database Connection
-conn = sqlite3.connect('rtc_database.db', check_same_thread=False)
+# Database Connection (Eta auto file create korbe)
+conn = sqlite3.connect('rtc_data.db', check_same_thread=False)
 c = conn.cursor()
 
-# Create Tables
+# Table structure setup
 c.execute('''CREATE TABLE IF NOT EXISTS interactions 
-             (id TEXT, channel TEXT, user_id TEXT, vertical TEXT, tag TEXT, reason TEXT, escalated TEXT, timestamp TEXT)''')
+             (interaction_id TEXT, channel TEXT, user_id TEXT, vertical TEXT, 
+              tag TEXT, reason TEXT, escalated TEXT, timestamp TEXT)''')
 conn.commit()
 
-def main():
-    st.set_page_config(page_title="RTC Tool", layout="wide")
-    
-    st.title("📞 Customer Support RTC Tool")
+# --- Page Config ---
+st.set_page_config(page_title="RTC Beta Tool", layout="wide")
 
-    # --- Sidebar Login (Simplified) ---
-    st.sidebar.header("Login")
-    user_type = st.sidebar.selectbox("Login As", ["Agent", "Admin"])
-    email = st.sidebar.text_input("Email")
-    password = st.sidebar.text_input("Password", type="password")
+# --- Authentication Logic (Simplified) ---
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
-    if st.sidebar.button("Login"):
-        st.success(f"Logged in as {email}")
+if not st.session_state.logged_in:
+    st.title("🔐 Login to RTC Tool")
+    email = st.text_input("Pathao Email")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if email.endswith("@pathao.com") and len(password) > 3: # Basic logic
+            st.session_state.logged_in = True
+            st.rerun()
+        else:
+            st.error("Invalid Email or Password")
+else:
+    # --- Main Application ---
+    st.sidebar.button("Logout", on_click=lambda: st.session_state.update({"logged_in": False}))
+    st.title("🚀 Interaction Entry Tool")
 
-    # --- Search Bar ---
-    st.subheader("🔍 Search Interaction History")
-    search_id = st.text_input("Enter Interaction ID (Calling No / Trip ID)")
+    # --- 1. Search Section ---
+    st.subheader("🔍 Search History")
+    search_id = st.text_input("Search by Interaction ID (Number/Trip ID)")
     if search_id:
-        query = f"SELECT * FROM interactions WHERE id = '{search_id}'"
-        results = pd.read_sql(query, conn)
-        st.write(results)
+        query = f"SELECT * FROM interactions WHERE interaction_id = '{search_id}'"
+        search_res = pd.read_sql(query, conn)
+        if not search_res.empty:
+            st.dataframe(search_res)
+        else:
+            st.warning("No previous interaction found with this ID.")
 
     st.divider()
 
-    # --- Interaction Entry Form ---
-    st.subheader("📝 New Interaction Entry")
-    with st.form("entry_form", clear_on_submit=True):
+    # --- 2. Entry Form ---
+    st.subheader("📝 New Entry")
+    with st.form("rtc_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
         with col1:
-            i_id = st.text_input("Interaction ID")
+            i_id = st.text_input("Interaction ID (Calling No/Chat ID)")
             channel = st.selectbox("Channel", ["Inbound", "Live Chat", "Report Issue & Email", "Complaint Management"])
             u_id = st.text_input("Customer/Driver ID")
-            vertical = st.text_input("Business Vertical")
+            vertical = st.text_input("Business Vertical (e.g. Food, Ride)")
 
         with col2:
-            u_type = st.text_input("User Type")
             tag = st.selectbox("Tag Category", ["Inquiry", "Complain", "Request", "Other"])
+            u_type = st.text_input("User Type")
             escalate = st.radio("Escalated to Complaint Management?", ["No", "Yes"])
-            attachment = st.file_uploader("Attach Media", type=['png', 'jpg', 'mp3', 'mp4'])
-
+        
         reason = st.text_area("Reason for Interaction")
         
-        submit = st.form_submit_button("Submit Entry")
-
-        if submit:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            c.execute("INSERT INTO interactions VALUES (?,?,?,?,?,?,?,?)", 
-                      (i_id, channel, u_id, vertical, tag, reason, escalate, timestamp))
-            conn.commit()
-            st.success("Entry Saved Successfully!")
-
-if __name__ == '__main__':
-    main()
+        if st.form_submit_button("Submit Entry"):
+            if i_id and reason: # Basic validation
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute("INSERT INTO interactions VALUES (?,?,?,?,?,?,?,?)", 
+                          (i_id, channel, u_id, vertical, tag, reason, escalate, timestamp))
+                conn.commit()
+                st.success(f"Entry Saved! Interaction ID: {i_id}")
+            else:
+                st.error("Please fill the mandatory fields.")
